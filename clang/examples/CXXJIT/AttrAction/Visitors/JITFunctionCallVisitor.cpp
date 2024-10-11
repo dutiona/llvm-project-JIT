@@ -1,12 +1,56 @@
 #include <AttrAction/Visitors/JITFunctionCallVisitor.hpp>
 
 #include <JITRegistry.hpp>
+#include <algorithm>
 #include <helpers.hpp>
 
-JITFunctionCallVisitor::JITFunctionCallVisitor(clang::CompilerInstance &CI,
-                                               clang::ASTContext &Context)
-    : Context(Context), CI(CI) {}
+JITFunctionCallVisitor::JITFunctionCallVisitor(clang::ASTContext &Context)
+    : Context{Context} {}
 
+bool JITFunctionCallVisitor::VisitCallExpr(clang::CallExpr *Call) {
+
+  if (Call) {
+    auto callsites = _jit::extract_templated_callexpr_to_jit_in_stmt(Call);
+    for (const auto &callsite : callsites) {
+      if (_jit::FunctionsMarkedToJIT().contains(callsite.fdecl->getID())) {
+        _jit::log_debug() << "Caller to FunctionDecl <"
+                          << callsite.fdecl->getNameAsString()
+                          << "> is marked for JIT\n";
+        _jit::CallerExprsMarkedToJIT().emplace(
+            Call->getID(Context),
+            _jit::CallExprToJIT{.fname = callsite.fdecl->getNameAsString(),
+                                .fdeclId = callsite.fdecl->getID(),
+                                .cxprptr = callsite.callexpr,
+                                .fptr = callsite.fdecl,
+                                .declrefexpr = callsite.declrefexpr});
+      }
+    }
+  }
+
+  return true;
+}
+
+bool JITFunctionCallVisitor::VisitFunctionDecl(clang::FunctionDecl *FD) {
+  if (FD && not _jit::FunctionsMarkedToJIT().contains(FD->getID())) {
+    auto ret = std::find_if(
+        _jit::CallerExprsMarkedToJIT().begin(),
+        _jit::CallerExprsMarkedToJIT().end(),
+        [FD](const auto &el) { return el.second.fdeclId == FD->getID(); });
+
+    if (ret != _jit::CallerExprsMarkedToJIT().end()) {
+      _jit::log_debug() << "FunctionDecl found in callexprs marked for JIT <"
+                        << FD->getID() << ">: " << FD->getNameAsString()
+                        << "\n";
+      _jit::FunctionsMarkedToJIT().emplace(
+          FD->getID(),
+          _jit::FuncToJIT{.fptr = FD, .name = FD->getNameAsString()});
+    }
+  }
+
+  return true;
+}
+
+/*
 bool JITFunctionCallVisitor::VisitCallExpr(clang::CallExpr *Call) {
   if (auto *Callee = llvm::dyn_cast<clang::DeclRefExpr>(Call->getCallee())) {
     _jit::log_debug() << "Callee <" << Callee->getNameInfo() << ">\n";
@@ -14,7 +58,8 @@ bool JITFunctionCallVisitor::VisitCallExpr(clang::CallExpr *Call) {
       _jit::log_debug() << "FunctionDecl <" << FD->getNameAsString() << ">\n";
       if (_jit::FunctionsMarkedToJIT().find(FD->getID()) !=
           _jit::FunctionsMarkedToJIT().end()) {
-        _jit::log_debug() << "Found call to function " << FD->getNameAsString()
+        _jit::log_debug() << "Found call to function " <<
+FD->getNameAsString()
                           << "\n";
 
         // Step 2: We need to replace the function being called with
@@ -118,3 +163,4 @@ void JITFunctionCallVisitor::replaceCallArguments(
   }
   Call->computeDependence();
 }
+*/

@@ -1,5 +1,7 @@
 #include <helpers.hpp>
 
+#include <JITRegistry.hpp>
+
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclTemplate.h>
 #include <clang/AST/ExprCXX.h>
@@ -131,6 +133,20 @@ llvm::raw_ostream &pretty_print_stmt_json(const clang::Stmt *stmt,
   return os;
 }
 
+void dump_registry() {
+  // Inspect what we have in FunctionsMarkedToJIT and CallerExprsMarkedToJIT
+  auto &os = _jit::log_debug() << "Listing FunctionsMarkedToJIT:\n";
+  for (const auto &[k, v] : _jit::FunctionsMarkedToJIT()) {
+    os << "\tFID<" << k << ">: " << v.name << "\n";
+  }
+
+  os << "Listing CallerExprsMarkedToJIT:\n";
+  for (const auto &[k, v] : _jit::CallerExprsMarkedToJIT()) {
+    os << "\tCallExprID<" << k << ">: pointing to func FID<" << v.fdeclId
+       << "> (" << v.fname << ")\n";
+  }
+}
+
 void instrumentFunction(llvm::Function *Function, llvm::IRBuilder<> &Builder) {
   // Assuming we have a logging function declared somewhere in the module
 
@@ -169,14 +185,55 @@ void instrumentFunction(llvm::Function *Function, llvm::IRBuilder<> &Builder) {
   }
 }
 
+const clang::FunctionDecl *
+extract_originated_fdecl_if_any(const clang::Decl *decl) {
+  if (decl) {
+    // get the function Decl from the call
+    if (auto *fdecl = decl->getAsFunction(); fdecl) {
+      // if it is a call to a function template, we dig and retreive the
+      // FuncDecl from which it is from
+      if (auto *ftspecinfo = fdecl->getTemplateSpecializationInfo();
+          ftspecinfo) {
+        // we retrieve the FTDecl it is originated from,
+        if (auto *ftdecl = ftspecinfo->getTemplate(); ftdecl) {
+          // we cast it as a FuncDecl as it is what we store in the registry
+          return ftdecl->getAsFunction();
+        }
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+static void extract_templated_declrefexpr_from_funcdecl(
+    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit);
+
+static void extract_templated_callexpr_to_jit_in_stmt_impl(
+    const clang::Stmt *stmt,
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit);
+
+static void handle_nested_calls_if_needed(
+    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
+    const clang::Stmt *child,
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit);
+
+static void handle_implicit_cast_operator(
+    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
+    const clang::ImplicitCastExpr *implcastexpr,
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit);
+
 void handle_nested_calls_if_needed(
-    const clang::CallExpr *parent_callexpr, const clang::Stmt *child,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit) {
-  if (auto *delcrefexr = llvm::dyn_cast<clang::DeclRefExpr>(child)) {
-    if (delcrefexr->hasTemplateKWAndArgsInfo()) {
-      templated_callexprs_to_jit.push_back(parent_callexpr);
-      _jit::log_debug() << "Adding <" << delcrefexr->getNameInfo()
-                        << "> in function list to JIT\n";
+    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
+    const clang::Stmt *child,
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit) {
+  if (auto *declrefexr = llvm::dyn_cast<clang::DeclRefExpr>(child)) {
+    if (declrefexr->hasTemplateKWAndArgsInfo()) {
+      auto *FD = _jit::extract_originated_fdecl_if_any(fdecl);
+      templated_callexprs_to_jit.push_back({FD, parent_callexpr, declrefexr});
+      _jit::log_debug() << "Adding <" << declrefexr->getNameInfo() << "/"
+                        << FD->getID() << "> in function list to JIT\n";
     }
 
     // handle nested function call
@@ -188,29 +245,27 @@ void handle_nested_calls_if_needed(
 }
 
 void handle_implicit_cast_operator(
-    const clang::CallExpr *parent_callexpr,
+    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
     const clang::ImplicitCastExpr *implcastexpr,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit) {
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit) {
   for (auto *child : implcastexpr->children()) {
-    handle_nested_calls_if_needed(parent_callexpr, child,
+    handle_nested_calls_if_needed(parent_callexpr, fdecl, child,
                                   templated_callexprs_to_jit);
   }
 }
 
 void extract_templated_declrefexpr_from_funcdecl(
     const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit) {
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit) {
   if (fdecl && parent_callexpr) {
     for (auto *child : parent_callexpr->children()) {
-      _jit::log_debug() << "Nested statement:";
-      _jit::pretty_print_stmt(child, llvm::outs());
 
       auto *implcastexpr = llvm::dyn_cast<clang::ImplicitCastExpr>(child);
       if (implcastexpr) {
-        handle_implicit_cast_operator(parent_callexpr, implcastexpr,
+        handle_implicit_cast_operator(parent_callexpr, fdecl, implcastexpr,
                                       templated_callexprs_to_jit);
       } else {
-        handle_nested_calls_if_needed(parent_callexpr, child,
+        handle_nested_calls_if_needed(parent_callexpr, fdecl, child,
                                       templated_callexprs_to_jit);
       }
     }
@@ -219,28 +274,18 @@ void extract_templated_declrefexpr_from_funcdecl(
 
 void extract_templated_callexpr_to_jit_in_stmt_impl(
     const clang::Stmt *stmt,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit) {
+    std::vector<CallSiteInfo> &templated_callexprs_to_jit) {
+
   if (!stmt)
     return;
 
-  _jit::log_debug() << "Checking statement:";
-  auto &os = _jit::pretty_print_stmt(stmt, llvm::outs());
-
   auto *callexpr = llvm::dyn_cast<clang::CallExpr>(stmt);
-  os << "is callexpr? " << (callexpr ? "true" : "false") << "\n";
 
   if (callexpr) {
     auto *decl = llvm::dyn_cast<clang::Decl>(callexpr->getCalleeDecl());
-    os << "is Decl? " << (decl ? "true" : "false") << "\n";
     if (decl) {
-      os << "is isFunctionOrFunctionTemplate? "
-         << (decl->isFunctionOrFunctionTemplate() ? "true" : "false") << "\n";
       if (decl->isFunctionOrFunctionTemplate()) {
         auto *fdecl = llvm::dyn_cast<clang::FunctionDecl>(decl);
-        os << "is functionDecl? " << (fdecl ? "true" : "false") << "\n";
-        os << "is isTemplated? " << (fdecl->isTemplated() ? "true" : "false")
-           << "\n";
-
         extract_templated_declrefexpr_from_funcdecl(callexpr, fdecl,
                                                     templated_callexprs_to_jit);
       }
@@ -253,41 +298,15 @@ void extract_templated_callexpr_to_jit_in_stmt_impl(
   }
 }
 
-std::vector<const clang::CallExpr *>
+std::vector<CallSiteInfo>
 extract_templated_callexpr_to_jit_in_stmt(const clang::Stmt *stmt) {
   if (!stmt)
     return {};
 
-  _jit::log_debug() << "Checking statement:";
-  auto &os = _jit::pretty_print_stmt(stmt, llvm::outs());
-  auto *callexpr = llvm::dyn_cast<clang::CallExpr>(stmt);
-  os << "is callexpr? " << (callexpr ? "true" : "false") << "\n";
+  auto templated_callexprs_to_jit = std::vector<CallSiteInfo>{};
+  extract_templated_callexpr_to_jit_in_stmt_impl(stmt,
+                                                 templated_callexprs_to_jit);
 
-  std::vector<const clang::CallExpr *> templated_callexprs_to_jit = {};
-
-  if (callexpr) {
-    auto *decl = llvm::dyn_cast<clang::Decl>(callexpr->getCalleeDecl());
-    os << "is Decl? " << (decl ? "true" : "false") << "\n";
-    if (decl) {
-      os << "is isFunctionOrFunctionTemplate? "
-         << (decl->isFunctionOrFunctionTemplate() ? "true" : "false") << "\n";
-      if (decl->isFunctionOrFunctionTemplate()) {
-        auto *fdecl = llvm::dyn_cast<clang::FunctionDecl>(decl);
-        os << "is functionDecl? " << (fdecl ? "true" : "false") << "\n";
-        os << "is isTemplated? " << (fdecl->isTemplated() ? "true" : "false")
-           << "\n";
-
-        extract_templated_declrefexpr_from_funcdecl(callexpr, fdecl,
-                                                    templated_callexprs_to_jit);
-      }
-    }
-  } else {
-    std::vector<const clang::CallExpr *> templated_callexpr_to_jit = {};
-    for (auto *child : stmt->children()) {
-      extract_templated_callexpr_to_jit_in_stmt_impl(
-          child, templated_callexprs_to_jit);
-    }
-  }
   return templated_callexprs_to_jit;
 }
 

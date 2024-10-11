@@ -39,7 +39,7 @@ bool JITFunctionDeclVisitor::VisitFunctionDecl(clang::FunctionDecl *FD) {
         JitFunction->setBody(Stmt);
 
       // Store for callsite parsing
-      _jit::FunctionsMarkedToJIT()[FD->getID()] = JitFunction;
+      // _jit::FunctionsMarkedToJIT()[FD->getID()] = JitFunction;
     }
   }
 

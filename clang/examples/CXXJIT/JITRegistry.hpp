@@ -4,17 +4,35 @@
 #include <clang/AST/Expr.h>
 #include <clang/AST/Stmt.h>
 
-#include <map>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace _jit {
 
-auto DeclMarkedForJIT() -> std::map<unsigned, clang::Decl *> &;
-auto StmtMarkedForJIT() -> std::map<unsigned, clang::Stmt *> &;
+struct FuncToJIT {
+  clang::FunctionDecl *fptr;
+  std::string name;
+};
 
-auto FunctionsMarkedToJIT() -> std::map<unsigned, clang::FunctionDecl *> &;
-auto CallerExprsMarkedToJIT() -> std::map<unsigned, clang::CallExpr *> &;
+struct CallExprToJIT {
+  std::string fname;
+  long fdeclId;
+  const clang::CallExpr *cxprptr;
+  const clang::FunctionDecl *fptr;
+  const clang::DeclRefExpr *declrefexpr;
+};
 
+auto DeclMarkedForJIT() -> std::unordered_set<unsigned long> &;
+auto StmtMarkedForJIT() -> std::unordered_set<unsigned long> &;
+
+auto FunctionsMarkedToJIT() -> std::unordered_map<unsigned long, FuncToJIT> &;
+auto CallerExprsMarkedToJIT()
+    -> std::unordered_map<unsigned long, CallExprToJIT> &;
+
+/*
 auto FunctionsToJIT() -> std::map<unsigned, clang::FunctionDecl *> &;
 auto CallerExprsToJIT() -> std::map<unsigned, clang::CallExpr *> &;
+*/
 
 } // namespace _jit

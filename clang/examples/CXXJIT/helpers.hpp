@@ -18,16 +18,11 @@
 #endif
 
 namespace _jit {
+
 llvm::raw_ostream &
 log_error(const std::source_location &scl = std::source_location::current());
 llvm::raw_ostream &
 log_debug(const std::source_location &scl = std::source_location::current());
-
-llvm::Type *translateClangTypeToLLVM(clang::QualType QT,
-                                     llvm::LLVMContext &Context);
-
-llvm::Function *createLogFunction(llvm::Module *Module,
-                                  llvm::IRBuilder<> &Builder);
 
 void instrumentFunction(llvm::Function *Function, llvm::IRBuilder<> &Builder);
 
@@ -40,17 +35,25 @@ void instrumentFunction(llvm::Function *Function, llvm::IRBuilder<> &Builder);
 [[maybe_unused]] llvm::raw_ostream &
 pretty_print_stmt_json(const clang::Stmt *stmt, llvm::raw_ostream &os);
 
-void extract_templated_declrefexpr_from_funcdecl(
-    const clang::CallExpr *parent_callexpr, const clang::FunctionDecl *fdecl,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit);
+void dump_registry();
 
-void extract_templated_callexpr_to_jit_in_stmt_impl(
-    const clang::Stmt *stmt,
-    std::vector<const clang::CallExpr *> &templated_callexprs_to_jit);
+const clang::FunctionDecl *
+extract_originated_fdecl_if_any(const clang::Decl *decl);
 
-std::vector<const clang::CallExpr *>
+struct CallSiteInfo {
+  const clang::FunctionDecl *fdecl;
+  const clang::CallExpr *callexpr;
+  const clang::DeclRefExpr *declrefexpr;
+};
+
+std::vector<CallSiteInfo>
 extract_templated_callexpr_to_jit_in_stmt(const clang::Stmt *stmt);
 
+llvm::Type *translateClangTypeToLLVM(clang::QualType QT,
+                                     llvm::LLVMContext &Context);
+
+llvm::Function *createLogFunction(llvm::Module *Module,
+                                  llvm::IRBuilder<> &Builder);
 /*
 std::ostringstream oss;
 oss << "Diagnostic: " << "isFunctionOrFunctionTemplate<"

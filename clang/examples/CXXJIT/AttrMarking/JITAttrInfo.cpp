@@ -1,5 +1,3 @@
-#include "clang/Basic/DiagnosticSema.h"
-#include "clang/Sema/ParsedAttr.h"
 #include <AttrMarking/JITAttrInfo.hpp>
 
 #include <JITRegistry.hpp>
@@ -10,6 +8,7 @@
 #include <clang/AST/Stmt.h>
 #include <clang/Basic/DiagnosticFrontend.h>
 #include <clang/Basic/ParsedAttrInfo.h>
+#include <clang/Sema/ParsedAttr.h>
 #include <clang/Sema/Sema.h>
 #include <llvm/Support/Casting.h>
 
@@ -27,78 +26,10 @@ JITAttrInfo::JITAttrInfo() : ParsedAttrInfo() {
   Spellings = S;
 }
 
-// Decl can be a function decl marked with JIT like
-// template <int I> [[jit]] void foo(int a) { return a + I; }
-// if (D->isFunctionOrFunctionTemplate()) {
-// auto &os = _jit::log_debug()
-//            << "Detecting function or function template...\n";
-// D->print(os);
-// os << "\n";
-
-//_jit::FunctionsMarkedToJIT().emplace(D->getID(), nullptr);
-//  return true;
-//}
-
-// return false;
-
-// S.Diag(Attr.getLoc(), clang::diag::warn_attribute_wrong_decl_type)
-//     << Attr << clang::ExpectedFunction
-//     << " function template [JITAttrInfo::diagAppertainsToDecl]";
-
-// else it can be a variable declaration, but it must be initialized at the
-// same time
-// if (!D->hasBody()) {
-//  auto &os = _jit::log_debug()
-//             << "Ignoring attr on a decl without a body...\n";
-//  D->print(os);
-//  os << "\n";
-//
-//  // S.Diag(Attr.getLoc(), clang::diag::warn_attribute_wrong_decl_type)
-//  //     << Attr << clang::ExpectedVariableOrFunction
-//  //     << ": no body for this declaration!";
-//  return false;
-//}
-
-//_jit::log_debug() << "Top level...\n";
-//_jit::pretty_print_stmt(D->getBody(), llvm::outs());
-
-// We look for the callexpr inside the declaration that are related to JIT
-// [[jit]] auto b = bar(f(42, test<I>(...))
-// We're looking for test<I>(...) in particular
-// auto callexprs_to_jit =
-//    extract_templated_callexpr_to_jit_in_stmt(D->getBody());
-// if (!callexprs_to_jit.empty()) {
-//  for (auto *callexpr : callexprs_to_jit) {
-//    _jit::CallerExprsMarkedToJIT().emplace(
-//        callexpr->getID(D->getASTContext()), nullptr);
-//  }
-//  /*
-//  for (auto *callexpr : callexpr_to_jit) {
-//    auto *fdecl =
-//        llvm::dyn_cast<clang::FunctionDecl>(callexpr->getCalleeDecl());
-//    if (!fdecl) {
-//      _jit::log_error() << "Wrong fdecl extracted from callexpr! Most likely
-//      "
-//                           "internal bug.";
-//      _jit::pretty_print_stmt(callexpr, llvm::errs());
-//    } else {
-//      _jit::FunctionsMarkedToJIT().emplace(fdecl->getID(), nullptr);
-//    }
-//  }
-//  */
-//  return true;
-//}
-
-// S.Diag(Attr.getLoc(), clang::diag::warn_attribute_wrong_decl_type)
-//     << Attr << clang::ExpectedVariableOrFunction;
-
-// return false;
-
 bool JITAttrInfo::diagAppertainsToDecl(clang::Sema &S,
                                        const clang::ParsedAttr &Attr,
                                        const clang::Decl *D) const {
-  _jit::DeclMarkedForJIT().emplace(
-      D->getID(), nullptr /* to be filled during AST traversal */);
+  _jit::DeclMarkedForJIT().emplace(D->getID());
   auto &os = _jit::log_debug() << "Decl marked for jit:";
   _jit::pretty_print_decl(D, os);
   return true;
@@ -122,23 +53,22 @@ clang::ParsedAttrInfo::AttrHandling
 JITAttrInfo::handleDeclAttribute(clang::Sema &S, clang::Decl *D,
                                  const clang::ParsedAttr &Attr) const {
 
+  // handle funcDecl to JIT
   if (D->isFunctionOrFunctionTemplate()) {
-    auto *FTDecl = clang::cast<clang::FunctionTemplateDecl>(D);
-    clang::FunctionDecl *FDecl = FTDecl->getTemplatedDecl();
+    auto *FDecl = D->getAsFunction();
 
-    _jit::log_debug() << "Function <" << FTDecl->getNameAsString() << ":"
-                      << FTDecl->getID() << "/" << FTDecl << "/" << FDecl
-                      << "> ("
-                      << FTDecl->getLocation().printToString(
+    _jit::log_debug() << "Function <" << FDecl->getNameAsString() << ":"
+                      << FDecl->getID() << "/" << FDecl << "/" << FDecl << "> ("
+                      << FDecl->getLocation().printToString(
                              S.getSourceManager())
                       << "): " << "Marked with [[jit]] attribute.\n";
-    _jit::FunctionsMarkedToJIT().emplace(FTDecl->getID(),
-                                         FDecl /* can be filled here */);
+    _jit::FunctionsMarkedToJIT().emplace(
+        FDecl->getID(),
+        _jit::FuncToJIT{.fptr = FDecl, .name = FDecl->getNameAsString()});
     // no duplicate
-    if (_jit::DeclMarkedForJIT().contains(FTDecl->getID())) {
-      DeclMarkedForJIT().erase(FTDecl->getID());
-    }
+    DeclMarkedForJIT().erase(FDecl->getID());
   }
+
   return AttributeApplied;
 }
 

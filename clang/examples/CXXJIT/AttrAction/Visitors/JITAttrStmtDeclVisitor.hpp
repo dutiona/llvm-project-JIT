@@ -6,8 +6,7 @@
 class JITAttrStmtDeclVisitor
     : public clang::RecursiveASTVisitor<JITAttrStmtDeclVisitor> {
 public:
-  explicit JITAttrStmtDeclVisitor(clang::CompilerInstance &CI,
-                                  clang::ASTContext &Context);
+  explicit JITAttrStmtDeclVisitor(clang::ASTContext &Context);
 
   bool VisitVarDecl(const clang::VarDecl *VD);
   bool VisitDeclStmt(const clang::DeclStmt *DS);
@@ -15,5 +14,4 @@ public:
 
 private:
   clang::ASTContext &Context;
-  clang::CompilerInstance &CI;
 };
