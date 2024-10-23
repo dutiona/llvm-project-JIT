@@ -31,7 +31,8 @@ bool JITAttrStmtDeclVisitor::VisitVarDecl(const clang::VarDecl *VD) {
         _jit::CallerExprsMarkedToJIT().emplace(
             callexpr->getID(Context),
             _jit::CallExprToJIT{.fname = fdecl->getNameAsString(),
-                                .fdeclId = fdecl->getID(),
+                                .fdeclID = fdecl->getID(),
+                                .cxprID = callexpr->getID(Context),
                                 .cxprptr = callexpr,
                                 .fptr = fdecl,
                                 .declrefexpr = declrefexpr});

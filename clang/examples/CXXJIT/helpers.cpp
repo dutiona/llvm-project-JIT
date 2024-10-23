@@ -142,7 +142,7 @@ void dump_registry() {
 
   os << "Listing CallerExprsMarkedToJIT:\n";
   for (const auto &[k, v] : _jit::CallerExprsMarkedToJIT()) {
-    os << "\tCallExprID<" << k << ">: pointing to func FID<" << v.fdeclId
+    os << "\tCallExprID<" << k << ">: pointing to func FID<" << v.fdeclID
        << "> (" << v.fname << ")\n";
   }
 }
@@ -232,8 +232,11 @@ void handle_nested_calls_if_needed(
     if (declrefexr->hasTemplateKWAndArgsInfo()) {
       auto *FD = _jit::extract_originated_fdecl_if_any(fdecl);
       templated_callexprs_to_jit.push_back({FD, parent_callexpr, declrefexr});
-      _jit::log_debug() << "Adding <" << declrefexr->getNameInfo() << "/"
-                        << FD->getID() << "> in function list to JIT\n";
+      auto &os = _jit::log_debug()
+                 << "Adding <" << declrefexr->getNameInfo() << "/"
+                 << FD->getID() << "> in function list to JIT."
+                 << " Parent callexpr:\n";
+      _jit::pretty_print_stmt(parent_callexpr, os);
     }
 
     // handle nested function call
@@ -282,7 +285,7 @@ void extract_templated_callexpr_to_jit_in_stmt_impl(
   auto *callexpr = llvm::dyn_cast<clang::CallExpr>(stmt);
 
   if (callexpr) {
-    auto *decl = llvm::dyn_cast<clang::Decl>(callexpr->getCalleeDecl());
+    auto *decl = callexpr->getCalleeDecl();
     if (decl) {
       if (decl->isFunctionOrFunctionTemplate()) {
         auto *fdecl = llvm::dyn_cast<clang::FunctionDecl>(decl);

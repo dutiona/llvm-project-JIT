@@ -23,9 +23,11 @@ void test(int I, std::string __type_T)
 }
 */
 
-template <int J>
+#define DELAYED_PARSING(ARG) typename = std::enable_if_t<(ARG >= 0 || ARG < 0)>
+
+template <int J, DELAYED_PARSING(J)>
 [[jit]]
-int test2() {
+decltype(auto) test2() {
   switch (J) {
   case 1:
     return 42;
@@ -52,7 +54,7 @@ template <unsigned I> unsigned test4(unsigned a) { return a * I; }
 
 unsigned bbb(unsigned a) { return a >> 1; }
 
-int main(int /*argc*/, char ** /*argv*/) {
+int main(int argc, char ** /*argv*/) {
   std::cout << "Calling JIT function test" << std::endl;
   test<42, S>(3.14);
   std::cout << "Called JIT function test" << std::endl;
@@ -64,6 +66,11 @@ int main(int /*argc*/, char ** /*argv*/) {
 
   [[jit]] auto ret2 = bbb(test4<40>(12));
   std::cout << ret2 << std::endl;
+
+  /*
+  [[jit]] auto ret3 = test2<argc>();
+  std::cout << ret3 << std::endl;
+*/
 
   /* not supported yet
   auto ret3 = 0u;

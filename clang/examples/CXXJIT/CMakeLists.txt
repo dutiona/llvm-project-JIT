@@ -4,6 +4,7 @@ add_llvm_library(CXXJITPlugin MODULE
   helpers.cpp
   AttrMarking/JITAttrInfo.cpp
   AttrAction/JITAttributeAction.cpp
+  AttrAction/DiagHandler/JITDiagConsumer.cpp
   AttrAction/Visitors/JITAttrStmtDeclVisitor.cpp
   AttrAction/Visitors/JITFunctionCallVisitor.cpp
   AttrAction/Visitors/JITFunctionDeclVisitor.cpp

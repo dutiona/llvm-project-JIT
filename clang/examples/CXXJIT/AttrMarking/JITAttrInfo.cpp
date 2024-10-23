@@ -63,8 +63,9 @@ JITAttrInfo::handleDeclAttribute(clang::Sema &S, clang::Decl *D,
                              S.getSourceManager())
                       << "): " << "Marked with [[jit]] attribute.\n";
     _jit::FunctionsMarkedToJIT().emplace(
-        FDecl->getID(),
-        _jit::FuncToJIT{.fptr = FDecl, .name = FDecl->getNameAsString()});
+        FDecl->getID(), _jit::FuncToJIT{.fptr = FDecl,
+                                        .fdeclID = FDecl->getID(),
+                                        .name = FDecl->getNameAsString()});
     // no duplicate
     DeclMarkedForJIT().erase(FDecl->getID());
   }

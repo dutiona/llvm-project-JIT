@@ -12,12 +12,14 @@ namespace _jit {
 
 struct FuncToJIT {
   clang::FunctionDecl *fptr;
+  long fdeclID;
   std::string name;
 };
 
 struct CallExprToJIT {
   std::string fname;
-  long fdeclId;
+  long fdeclID;
+  long cxprID;
   const clang::CallExpr *cxprptr;
   const clang::FunctionDecl *fptr;
   const clang::DeclRefExpr *declrefexpr;

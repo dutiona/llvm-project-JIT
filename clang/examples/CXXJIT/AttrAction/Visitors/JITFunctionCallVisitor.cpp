@@ -17,9 +17,10 @@ bool JITFunctionCallVisitor::VisitCallExpr(clang::CallExpr *Call) {
                           << callsite.fdecl->getNameAsString()
                           << "> is marked for JIT\n";
         _jit::CallerExprsMarkedToJIT().emplace(
-            Call->getID(Context),
+            callsite.callexpr->getID(Context),
             _jit::CallExprToJIT{.fname = callsite.fdecl->getNameAsString(),
-                                .fdeclId = callsite.fdecl->getID(),
+                                .fdeclID = callsite.fdecl->getID(),
+                                .cxprID = callsite.callexpr->getID(Context),
                                 .cxprptr = callsite.callexpr,
                                 .fptr = callsite.fdecl,
                                 .declrefexpr = callsite.declrefexpr});
@@ -35,15 +36,16 @@ bool JITFunctionCallVisitor::VisitFunctionDecl(clang::FunctionDecl *FD) {
     auto ret = std::find_if(
         _jit::CallerExprsMarkedToJIT().begin(),
         _jit::CallerExprsMarkedToJIT().end(),
-        [FD](const auto &el) { return el.second.fdeclId == FD->getID(); });
+        [FD](const auto &el) { return el.second.fdeclID == FD->getID(); });
 
     if (ret != _jit::CallerExprsMarkedToJIT().end()) {
       _jit::log_debug() << "FunctionDecl found in callexprs marked for JIT <"
                         << FD->getID() << ">: " << FD->getNameAsString()
                         << "\n";
       _jit::FunctionsMarkedToJIT().emplace(
-          FD->getID(),
-          _jit::FuncToJIT{.fptr = FD, .name = FD->getNameAsString()});
+          FD->getID(), _jit::FuncToJIT{.fptr = FD,
+                                       .fdeclID = FD->getID(),
+                                       .name = FD->getNameAsString()});
     }
   }
 

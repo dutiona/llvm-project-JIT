@@ -8,13 +8,13 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "generator": "Ninja",
       "environment": {
-        "CC": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Release/bin/clang",
-        "CXX": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Release/bin/clang++"
+        "CC": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Debug/bin/clang",
+        "CXX": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Debug/bin/clang++"
       },
       "cacheVariables": {
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}",
-        "CMAKE_C_COMPILER": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Release/bin/clang",
-        "CMAKE_CXX_COMPILER": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Release/bin/clang++",
+        "CMAKE_C_COMPILER": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Debug/bin/clang",
+        "CMAKE_CXX_COMPILER": "/home/michael-roynard/dev/llvm-project/build/install/Clang18-Debug/bin/clang++",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "On",
         "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold",

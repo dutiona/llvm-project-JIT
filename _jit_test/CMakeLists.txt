@@ -68,9 +68,17 @@ target_link_libraries(TestLoadPlugin PRIVATE
   llvm_plugin_test_utils
 )
 
+target_compile_options(TestLoadPlugin PRIVATE
+
+  # Needed to intercept runtime value as template parameters
+  # By default, Clang parses them early, BEFORE the plugin is even loaded
+  # With this flag we force clang to delay template parsing so that the plugin can be loaded and take some action on them
+  "-fdelayed-template-parsing"
+)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_options(TestLoadPlugin PUBLIC
-    "-fplugin=/home/michael-roynard/dev/llvm-project/build/Clang18-Release/lib/CXXJITPlugin.so"
+    "-fplugin=/home/michael-roynard/dev/llvm-project/build/Clang18-Debug/lib/CXXJITPlugin.so"
   )
 endif()
 
